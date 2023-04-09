@@ -3,6 +3,7 @@ The 24-bit per pixel (24bpp) format supports 16,777,216 distinct colors and stor
 Each pixel value defines the red, green and blue samples of the pixel (8.8.8.0.0 in RGBAX notation).
 Specifically, in the order: blue, green and red (8 bits per each sample)
 */
+// conver an 24-bit color bmp picture into a black&whiet (greyscale) one
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -176,7 +177,6 @@ int main()
     {
         convert(fileIn, bmpH, dibH, "output.bmp");
     }
-    
 
     free(bmpH);
     free(dibH);
