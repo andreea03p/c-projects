@@ -3,7 +3,6 @@ The 24-bit per pixel (24bpp) format supports 16,777,216 distinct colors and stor
 Each pixel value defines the red, green and blue samples of the pixel (8.8.8.0.0 in RGBAX notation).
 Specifically, in the order: blue, green and red (8 bits per each sample)
 */
-// convert an 24-bit color bmp picture into a black&white (greyscale) one
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,13 +35,13 @@ typedef struct dib_header
 
 } dib_header;
 
-typedef struct Pixel
+typedef struct PixelsData
 {
     unsigned char blue;
     unsigned char green;
     unsigned char red;
 
-} Pixel;
+} PixelsData;
 
 
 void convert(FILE *f, bmp_header* bmpH, dib_header* dibH, char *outf)
@@ -54,11 +53,24 @@ void convert(FILE *f, bmp_header* bmpH, dib_header* dibH, char *outf)
         exit(EXIT_FAILURE);
     }
 
-    fwrite(bmpH, sizeof(bmp_header), 1, fileOut);
-    fwrite(dibH, sizeof(dib_header), 1, fileOut);
+    if( fwrite(bmpH, sizeof(bmp_header), 1, fileOut) != 1)
+    {
+        perror("error writing bmp header in output file\n");
+        exit(EXIT_FAILURE);
+    }
+    if (bmpH->signature[0] != 'B' || bmpH->signature[1] != 'M')
+    {
+        perror("error: the output file is not BMP format\n");
+        exit(EXIT_FAILURE);
+    }
 
+    if(fwrite(dibH, sizeof(dib_header), 1, fileOut) != 1)
+    {
+        perror("error writing dib header in output file\n");
+        exit(EXIT_FAILURE);
+    }
 
-    Pixel** newImage = malloc(dibH->height * sizeof(Pixel*));
+    PixelsData** newImage = malloc(dibH->height * sizeof(PixelsData*));
     if(newImage == NULL)
     {
         perror("error allocating new image\n");
@@ -67,28 +79,36 @@ void convert(FILE *f, bmp_header* bmpH, dib_header* dibH, char *outf)
 
     for (int i = 0; i < dibH->height; ++i) 
     {
-        newImage[i] = malloc(dibH->width * sizeof(Pixel));
+        newImage[i] = malloc(dibH->width * sizeof(PixelsData));
         if (newImage[i] == NULL)
         {
             perror("error allocating row\n");
             exit(EXIT_FAILURE);
         }
 
-        for (int y = 0; y < dibH->width; ++y) 
+        for (int j = 0; j < dibH->width; ++j) 
         {
-            fread(&newImage[i][y], sizeof(Pixel), 1, f);
-            unsigned char grayscale = (unsigned char)(0.3 * newImage[i][y].red + 0.59 * newImage[i][y].green + 0.11 * newImage[i][y].blue);
-            newImage[i][y].blue = grayscale;
-            newImage[i][y].green = grayscale;
-            newImage[i][y].red = grayscale;
+            if(fread(&newImage[i][j], sizeof(PixelsData), 1, f) != 1)
+            {
+                perror("error reading matrix item from output file\n");
+                exit(EXIT_FAILURE);
+            }
+            unsigned char grayscale = (unsigned char)(0.3 * newImage[i][j].red + 0.6 * newImage[i][j].green + 0.1 * newImage[i][j].blue);
+            newImage[i][j].blue = grayscale;
+            newImage[i][j].green = grayscale;
+            newImage[i][j].red = grayscale;
         }
     }
 
     for (int i = 0; i < dibH->height; ++i) 
     {
-        for (int y = 0; y < dibH->width; ++y) 
+        for (int j = 0; j < dibH->width; ++j)
         {
-            fwrite(&newImage[i][y], sizeof(Pixel), 1, fileOut);
+            if(fwrite(&newImage[i][j], sizeof(PixelsData), 1, fileOut) != 1)
+            {
+                perror("error writing matrix item in output file\n");
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
@@ -99,6 +119,8 @@ void convert(FILE *f, bmp_header* bmpH, dib_header* dibH, char *outf)
     free(newImage);
 
     fclose(fileOut);
+
+    printf("\nSuccessful Conversion! \n");
 }
 
 
@@ -106,10 +128,14 @@ void readHeader(FILE *f, bmp_header* imgHeader)
 {
     printf("size of BMP HEADER: %ld\n", sizeof(bmp_header));
 
-    fread(imgHeader, sizeof(bmp_header), 1, f);
-    if (imgHeader->signature[0] != 'B' || imgHeader->signature[1] != 'M')
+    if(fread(imgHeader, sizeof(bmp_header), 1, f) != 1)
     {
-        perror("error: the file is not BMP format\n");
+        perror("error reading bmp header from input file\n");
+        exit(EXIT_FAILURE);
+    }
+    if(imgHeader->signature[0] != 'B' || imgHeader->signature[1] != 'M')
+    {
+        perror("error: the input file is not BMP format\n");
         exit(EXIT_FAILURE);
     }
 
@@ -121,7 +147,11 @@ void readImgInfo(FILE *f, dib_header* dibHeader)
 {
     printf("size of DIB HEADER: %ld\n", sizeof(dib_header));
 
-    fread(dibHeader, sizeof(dib_header), 1, f);
+    if(fread(dibHeader, sizeof(dib_header), 1, f) != 1)
+    {
+        perror("error reading dib header info from input file\n");
+        exit(EXIT_FAILURE);
+    }
     printf("Offset of width: %lu\n", sizeof(bmp_header) + offsetof(dib_header, width));
     printf("Offset of height: %lu\n", sizeof(bmp_header) + offsetof(dib_header, height));
     printf("Offset of bits per pixel: %lu\n", sizeof(bmp_header) + offsetof(dib_header, bpp));
@@ -134,14 +164,14 @@ void readImgInfo(FILE *f, dib_header* dibHeader)
     compress = dibHeader->compression;
     colorP = dibHeader->colorPlanes;
 
-    printf("image width: %d\nimage height: %d\nimage bits per pixel: %d\ncompression: %d\ncolorPlanes: %d\n", width, height, bitDepth, compress, colorP);
+    printf("image width: %d\nimage height: %d\nimage bits per pixel: %d\ncompression: %d\ncolorPlanes: %d", width, height, bitDepth, compress, colorP);
     printf("\n");
 }
 
 
 int main()
 {
-    FILE *fileIn = fopen("porsche.bmp", "rb");
+    FILE *fileIn = fopen("book.bmp", "rb");
     if (fileIn == NULL)
     {
         perror("error: can't open INPUT file\n");
@@ -163,7 +193,7 @@ int main()
     {
         perror("error allocating memory\n");
         exit(EXIT_FAILURE);
-    };
+    }
     readImgInfo(fileIn, dibH);
 
     printf("%d\n", dibH->bpp);
@@ -176,10 +206,10 @@ int main()
     else
     {
         convert(fileIn, bmpH, dibH, "output.bmp");
+        free(bmpH);
+        free(dibH);
     }
-
-    free(bmpH);
-    free(dibH);
+    
     fclose(fileIn);
 
     return 0;
